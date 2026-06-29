@@ -1,4 +1,4 @@
-# financial advisory agents
+# Financial Advisory AI Agents
 
 Two AI agents for personal finance, built during my AI engineering internship at Upstride.
 
