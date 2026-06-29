@@ -101,6 +101,45 @@ backend/
 │       └── agent.py
 └── requirements.txt
 ```
+---
+
+## Challenges & what I learned
+
+### LLM tool chaining doesn't guarantee value passing
+
+The insurance agent originally had two separate CrewAI tools — one to calculate
+required coverage, another to analyze the gap. The plan was for the LLM to take
+the `total_required_coverage` from Tool 1 and pass it as `required_coverage` into
+Tool 2.
+
+In practice, the LLM passed `0` instead of the actual value. Every time. The gap
+came back negative and Sneha (a critically underinsured user) was classified as
+over-insured.
+
+The fix: merge both tools into a single Python wrapper. The DIME calculation and
+gap analysis both run inside one function call, so there's no value to pass between
+tools — the math chains internally in Python, not through the LLM.
+
+The lesson: never trust the LLM to carry a number between tool calls when the
+second tool's correctness depends on it. If two operations are logically sequential,
+make them one tool.
+
+### CrewAI's `list[dict]` tool signature causes silent schema failures
+
+The debt payoff optimizer originally accepted `debts: list[dict]` as its parameter.
+CrewAI passes this to the LLM as part of the tool schema, and the LLM consistently
+passed `[{}]` — an empty dict — instead of filling in the fields.
+
+The error message was a Pydantic validation failure, which the LLM retried five
+more times with the same broken input before hitting `max_iter`.
+
+The fix: change the parameter to `debts_json: str` and accept a JSON string instead.
+The docstring includes a full example of what the JSON should look like. The LLM
+constructs the string correctly when given a concrete example.
+
+The lesson: for complex nested inputs, a JSON string with an example in the docstring
+is more reliable than a typed list. The LLM reads the docstring example, not the
+type annotation.
 
 ---
 
