@@ -1,593 +1,170 @@
-\# Financial Advisory Agents
+# financial-advisory-agents
 
+Two AI agents for personal finance, built during an AI engineering internship at Upstride (Nemi Wealth).
 
+Each agent follows the same pattern: deterministic Python tools do the math, the LLM reasons and communicates. Numbers are always verifiable. The LLM never estimates.
 
-Production-grade AI agents for personal finance, built with CrewAI and GPT-4o-mini.
+---
 
-Developed as part of an AI Engineering internship at Upstride.
+## Agents
 
+| Agent | Tools | Tests |
+|---|---|---|
+| Debt Management | 3 | 17 |
+| Insurance Coverage Gap Analyzer | 2 | 13 |
 
+**30 tests. All passing.**
 
-\---
+---
 
+## Agent 1 — Debt Management
 
+Helps users build a debt repayment strategy and improve their CIBIL credit score.
 
-\## Overview
+**Tool 1 — Debt Payoff Optimizer**  
+Runs both avalanche (highest rate first) and snowball (smallest balance first) simulations using month-by-month amortization. Returns both plans side-by-side with total interest paid and months to debt-free, then recommends based on the user's profile.
 
+**Tool 2 — Debt Consolidation Analyzer**  
+Given a list of debts and one or more consolidation loan options, calculates whether consolidation saves money after fees. Always flags the behavioral risk of re-accumulating debt on cleared lines.
 
+**Tool 3 — Credit Score Improvement Planner**  
+Encodes CIBIL's four scoring factors — payment history (35%), utilization (30%), credit age (15%), hard inquiries (10%) — into a prioritized action plan with timeline estimates. No live CIBIL API required.
 
-This repository contains two specialized financial advisory agents built for
+**Guardrails:** no lender recommendations, no legal advice, no guaranteed outcomes, SEBI disclaimer on every response.
 
-the Nemi Wealth platform. Each agent uses deterministic Python tools for all
+---
 
-calculations — the LLM handles reasoning and communication, the LLM will never handle math.
+## Agent 2 — Insurance Coverage Gap Analyzer
 
+Calculates how much life insurance a user actually needs and shows the gap in rupees.
 
+Uses the DIME method — the standard framework used by IRDAI-registered financial advisors:
 
-|       Agents                    |   Tools   | Tests |         Status          |
+```
+Required coverage = Debts + Income replacement + Mortgage + Education goals
+Gap = Required coverage − Existing coverage
+```
 
-|---------------------------------|-----------|-------|-------------------------|
+**Tool 1 — Coverage Need Calculator**  
+Runs the DIME formula. Retirement age defaults to 60. Education goal is configurable per child. Returns a full breakdown of each component.
 
-| Debt Management Agent           | 3         | 17    | Production-ready        |
+**Tool 2 — Coverage Gap Analyzer**  
+Compares the required coverage against all existing policies (term plan + employer group cover + LIC). Returns a risk classification and priority action.
 
-| Insurance Coverage Gap Analyzer | 2         | 13    | Production-ready        |
+```
+critically_underinsured   existing < 50% of need
+moderately_underinsured   gap exists, manageable
+adequately_covered        existing matches need
+over_insured              existing exceeds need
+```
 
+When a gap exists, the agent outputs `HANDOFF:wealth_retirement` — a signal for the orchestration layer to pass the gap amount into retirement planning.
 
+**Guardrails:** no insurer recommendations, no premium promises, IRDAI disclaimer on every response.
 
-\*\*Total: 2 agents · 5 tools · 30 unit tests · all passing\*\*
+---
 
+## Stack
 
+- **CrewAI** — agent framework and tool orchestration  
+- **GPT-4o-mini** — reasoning and response generation  
+- **Pydantic v2** — input/output validation for every tool  
+- **pytest** — unit tests on pure logic before LLM connection  
+- **Python 3.13**
 
-\---
+---
 
+## Structure
 
+```
+backend/
+├── agents/
+│   ├── debt_management/
+│   │   ├── schemas/models.py        ← Pydantic contracts
+│   │   ├── tools/
+│   │   │   ├── debt_payoff_optimizer.py
+│   │   │   ├── debt_consolidation_analyzer.py
+│   │   │   ├── credit_score_planner.py
+│   │   │   ├── tool1_wrapper.py     ← CrewAI @tool decorators
+│   │   │   ├── tool2_wrapper.py
+│   │   │   └── tool3_wrapper.py
+│   │   ├── tests/                   ← 17 unit tests
+│   │   └── agent.py
+│   └── insurance_coverage/
+│       ├── schemas/models.py
+│       ├── tools/
+│       │   ├── coverage_need_calculator.py
+│       │   ├── gap_analyzer.py
+│       │   ├── tool1_wrapper.py
+│       │   └── tool2_wrapper.py
+│       ├── tests/                   ← 13 unit tests
+│       └── agent.py
+└── requirements.txt
+```
 
-\## Agent 1 — Debt Management Agent
+---
 
-
-
-Helps users understand their debt situation, build a repayment strategy,
-
-and improve their CIBIL credit score.
-
-
-
-\### Tools
-
-
-
-\*\*Tool 1: Debt Payoff Optimizer\*\*
-
-Simulates avalanche (highest interest rate first) and snowball
-
-(smallest balance first) repayment strategies using month-by-month
-
-amortization math. Returns both strategies side-by-side with total
-
-interest paid, months to debt-free, and a recommendation based on
-
-the user's debt profile.
-
-
-
-\*\*Tool 2: Debt Consolidation Analyzer\*\*
-
-Compares multiple consolidation loan options against the user's
-
-current repayment path. Calculates net savings after processing fees.
-
-Always includes a behavioral warning about re-accumulating debt
-
-on cleared credit lines.
-
-
-
-\*\*Tool 3: Credit Score Improvement Planner\*\*
-
-Encodes CIBIL scoring logic across four factors — payment history (35%),
-
-credit utilization (30%), credit age (15%), and hard inquiries (10%).
-
-Returns a prioritized action plan with timeline estimates and projected
-
-score range. Works from user-provided data only — no live CIBIL API.
-
-
-
-\### Example interaction
-
-
-User: I have a credit card with Rs.1.5 lakh at 36% and a personal loan
-
-
-
-of Rs.3 lakh at 14%. I can pay Rs.5000 extra per month.
-
-
-
-What is my best strategy?
-
-
-
-Agent: \[calls Debt Payoff Optimizer]
-
-Avalanche method: debt-free in 26 months, Rs.90,971 total interest.
-
-Recommendation: Avalanche — pay credit card first at 36%.
-
-Once cleared, redirect Rs.7,500 + Rs.5,000 to personal loan.
-
-
-
-
-### Guardrails
-
-\- Never recommends specific banks or lenders by name
-
-\- Never advises on bankruptcy or legal proceedings
-
-\- Never promises guaranteed score improvements
-
-\- Always ends with SEBI disclaimer
-
-
-
-\---
-
-
-
-\## Agent 2 — Insurance Coverage Gap Analyzer
-
-
-
-Calculates how much life insurance a user needs using the DIME method
-
-and identifies the exact gap in rupees between their need and current coverage.
-
-
-
-\### DIME Method
-
-Required Coverage = D + I + M + E
-
-D = Debts (non-mortgage: personal loan, car loan, credit card)
-
-
-
-I = Income replacement (annual income × years to retirement)
-
-
-
-M = Mortgage (home loan outstanding)
-
-
-
-E = Education (goal per child × number of children)
-
-Gap = Required Coverage − Existing Coverage
-
-
-
-\### Tools
-
-
-
-\*\*Tool 1: Coverage Need Calculator\*\*
-
-Runs the DIME formula with India-specific defaults.
-
-Retirement age defaults to 60 if not specified.
-
-Education goal is configurable per child.
-
-
-
-\*\*Tool 2: Coverage Gap Analyzer\*\*
-
-Compares required coverage from Tool 1 against all existing policies
-
-(term plan + employer group cover + LIC/traditional policies).
-
-Returns risk classification and priority action.
-
-
-
-Risk classifications:
-
-\- `critically\_underinsured` — existing covers less than 50% of need
-
-\- `moderately\_underinsured` — gap exists but manageable
-
-\- `adequately\_covered` — existing matches need
-
-\- `over\_insured` — existing exceeds need
-
-
-
-\### Inter-agent handoff
-
-When a coverage gap is detected, the agent outputs:
-HANDOFF:wealth\_retirement
-
-
-
-This signal passes the gap amount to the Wealth \& Retirement agent
-
-for integration into retirement planning and wealth projection.
-
-
-
-\### Example interaction
-
-
-User: I am Sneha, 29. I earn Rs.75,000/month. Spouse, no children.
-
-
-
-Personal loan Rs.1.5L, car loan Rs.4L. Want to retire at 58.
-
-
-
-Only Rs.5L employer group cover. What is my gap?
-
-
-
-Agent: \[calls Insurance Coverage Gap Analyzer]
-
-
-
-Required coverage: Rs.2,66,62,000
-
-Existing coverage: Rs.5,00,000
-
-
-
-Gap: Rs.2,61,62,000
-
-Risk: Critically underinsured (2% of need covered)
-
-Action: Buy a pure term plan immediately.
-
-Note: Employer group cover ends when you leave the job.
-
-Would you like me to factor this into your retirement plan?
-
-HANDOFF:wealth\_retirement
-
-
-
-\### Guardrails
-
-\- Never recommends specific insurance companies or products
-
-\- Never promises specific premium amounts
-
-\- Always includes IRDAI compliance disclaimer
-
-\- Works from user-provided data only — no live insurance API
-
-
-
-\---
-
-
-
-\## Tech Stack
-
-
-
-|      Layer      |     Technology        |
-
-|-----------------|-----------------------|
-
-| Agent framework |      CrewAI           |
-
-| LLM             |  GPT-4o-mini (OpenAI) |
-
-| Data validation |      Pydantic v2      |
-
-| Testing         |       pytest          |
-
-| Language        |     Python 3.13       |
-
-
-
-\---
-
-
-
-\## Project Structure
-
-
-
-
-
-financial-advisory-agents/
-
-
-
-├── backend/
-
-
-
-│   ├── agents/
-
-
-
-│   │   ├── debt\_management/
-
-
-
-│   │   │   ├── schemas/models.py        # Pydantic data contracts
-
-
-
-│   │   │   ├── tools/
-
-
-
-│   │   │   │   ├── debt\_payoff\_optimizer.py
-
-
-
-│   │   │   │   ├── debt\_consolidation\_analyzer.py
-
-
-
-│   │   │   │   ├── credit\_score\_planner.py
-
-
-
-│   │   │   │   ├── tool1\_wrapper.py     # CrewAI tool wrappers
-
-
-
-│   │   │   │   ├── tool2\_wrapper.py
-
-
-
-│   │   │   │   └── tool3\_wrapper.py
-
-
-
-│   │   │   ├── tests/                   # 17 unit tests
-
-
-
-│   │   │   └── agent.py                 # Agent assembly
-
-
-
-│   │   └── insurance\_coverage/
-
-
-
-│   │       ├── schemas/models.py
-
-
-
-│   │       ├── tools/
-
-
-
-│   │       │   ├── coverage\_need\_calculator.py
-
-
-
-│   │       │   ├── gap\_analyzer.py
-
-
-
-│   │       │   ├── tool1\_wrapper.py
-
-
-
-│   │       │   └── tool2\_wrapper.py
-
-
-
-│   │       ├── tests/                   # 13 unit tests
-
-
-
-│   │       └── agent.py
-
-
-
-│   └── requirements.txt
-
-
-
-├── .env.example
-
-
-
-├── .gitignore
-
-
-
-└── README.md
-
-\---
-
-
-
-\## Setup
-
-
+## Setup
 
 ```bash
-
-\# Clone the repo
-
 git clone https://github.com/rmagdaleena2508-01/financial-advisory-agents.git
-
 cd financial-advisory-agents
 
-
-
-\# Create virtual environment
-
 python -m venv venv
-
-
-
-\# Activate (Windows)
-
-venv\\Scripts\\Activate.ps1
-
-
-
-\# Activate (Mac/Linux)
-
-source venv/bin/activate
-
-
-
-\# Install dependencies
+source venv/bin/activate        # Mac/Linux
+venv\Scripts\Activate.ps1       # Windows
 
 pip install -r backend/requirements.txt
 
-
-
-\# Set up environment
-
 cp .env.example .env
-
-\# Edit .env and add your OpenAI API key
-
+# Add your OpenAI API key to .env
 ```
 
+---
 
-
-\---
-
-
-
-\## Running the Agents
-
-
+## Run
 
 ```bash
-
 cd backend
 
+# Debt Management Agent
+python -m agents.debt_management.agent
 
-
-\# Run Debt Management Agent
-
-python -m agents.debt\_management.agent
-
-
-
-\# Run Insurance Coverage Gap Analyzer
-
-python -m agents.insurance\_coverage.agent
-
+# Insurance Coverage Gap Analyzer
+python -m agents.insurance_coverage.agent
 ```
 
+---
 
-
-\---
-
-
-
-\## Running Tests
-
-
+## Test
 
 ```bash
-
 cd backend
-
-
-
-\# All tests
 
 python -m pytest agents/ -v
-
-
-
-\# Debt Management tests only
-
-python -m pytest agents/debt\_management/tests/ -v
-
-
-
-\# Insurance Coverage tests only
-
-python -m pytest agents/insurance\_coverage/tests/ -v
-
+# expected: 30 passed
 ```
 
+---
 
+## How it's built
 
-Expected output:
+The build sequence is the same for every tool:
 
-30 passed in X.XXs
+1. Pydantic schema — define inputs and outputs
+2. Pure Python function — implement the logic, no LLM
+3. Unit tests — verify the math before connecting anything
+4. CrewAI wrapper — expose the function as an `@tool`
+5. Agent assembly — role, goal, backstory, guardrails
+6. End-to-end test — talk to the full agent
 
+Tools are tested independently of the LLM. If the math is wrong, tests catch it before the agent ever runs.
 
+---
 
-\---
+## Built by
 
+**R. Magdaleena** — AI Engineer Intern, Upstride  
+[linkedin.com/in/rmagdaleena-aiengineer](https://linkedin.com/in/rmagdaleena-aiengineer) · [rmagdaleena.xyz](https://rmagdaleena.xyz) · [github.com/rmagdaleena2508-01](https://github.com/rmagdaleena2508-01)
 
-
-\## Design Principles
-
-
-
-\*\*Tools do the math. LLM does the reasoning.\*\*
-
-Every number in every response comes from a deterministic Python function,
-
-not from the LLM. This means outputs are verifiable, testable, and consistent.
-
-
-
-\*\*Build sequence discipline.\*\*
-
-Pydantic schemas → pure Python logic → unit tests (all passing)
-
-→ CrewAI wrappers → agent assembly → end-to-end testing.
-
-Never skip a step.
-
-
-
-\*\*Guardrails are non-negotiable.\*\*
-
-Financial advisory is regulated in India. Every agent has explicit
-
-hard refusal rules in the system prompt and always includes
-
-appropriate disclaimers (SEBI / IRDAI).
-
-
-
-\---
-
-
-
-\## Built By
-
-
-
-\*\*R. Magdaleena\*\* — AI Engineer Intern at Upstride
-
-\[LinkedIn](https://linkedin.com/in/rmagdaleena-aiengineer) ·
-
-\[Portfolio](https://rmagdaleena.xyz) ·
-
-\[GitHub](https://github.com/rmagdaleena2508-01)
-
-
-
-\---
-
-
-
-\*Part of a Wealth fintech platform — a multi-agent AI financial advisory system serving Indian users.\*
-
-
-
-
+*Part of a multi-agent AI financial advisory system built for the Indian market.*
