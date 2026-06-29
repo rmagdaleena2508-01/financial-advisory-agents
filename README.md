@@ -6,7 +6,7 @@ Each agent follows the same pattern: deterministic Python tools do the math, the
 
 # describing this project like I'm talking to you
 
-Two AI agents that calculate your exact debt repayment strategy and life insurance coverage gap — built with CrewAI, GPT-4o-mini, and Pydantic.
+Two AI agents that calculate your exact debt repayment strategy and life insurance coverage gap , built with CrewAI, GPT-4o-mini, and Pydantic.
 
 ---
 
