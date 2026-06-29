@@ -1,6 +1,6 @@
-# financial-advisory-agents
+# financial advisory agents
 
-Two AI agents for personal finance, built during an AI engineering internship at Upstride (Nemi Wealth).
+Two AI agents for personal finance, built during my AI engineering internship at Upstride.
 
 Each agent follows the same pattern: deterministic Python tools do the math, the LLM reasons and communicates. Numbers are always verifiable. The LLM never estimates.
 
