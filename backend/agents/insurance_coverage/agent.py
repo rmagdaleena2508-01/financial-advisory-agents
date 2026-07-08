@@ -61,7 +61,11 @@ insurance_coverage_agent = Agent(
 )
 
 
-def chat_with_insurance_agent(user_message: str) -> str:
+def chat_with_insurance_agent(
+    user_message: str,
+    user_id: str = "anonymous",
+    session_id: str = None
+) -> dict:
     task = Task(
         description=user_message,
         agent=insurance_coverage_agent,
@@ -76,9 +80,21 @@ def chat_with_insurance_agent(user_message: str) -> str:
         tasks=[task],
         verbose=True
     )
-    result = crew.kickoff()
-    return str(result)
+    result = str(crew.kickoff())
 
+    from .storage import save_conversation
+    session_id = save_conversation(
+        user_id=user_id,
+        user_message=user_message,
+        agent_response=result,
+        session_id=session_id
+    )
+
+    return {
+        "response": result,
+        "session_id": session_id,
+        "user_id": user_id
+    }
 
 if __name__ == "__main__":
     print("\n=== Insurance Coverage Gap Analyzer — Test Run ===\n")
@@ -118,8 +134,15 @@ if __name__ == "__main__":
         ),
     ]
 
+    session_id = None
     for i, query in enumerate(queries, 1):
         print(f"--- Query {i} ---")
         print(f"USER: {query}\n")
-        response = chat_with_insurance_agent(query)
-        print(f"AGENT: {response}\n")
+        result = chat_with_insurance_agent(
+            user_message=query,
+            user_id="TEST_USER_001",
+            session_id=session_id
+        )
+        session_id = result["session_id"]
+        print(f"AGENT: {result['response']}\n")
+        print(f"Session ID: {session_id}\n")
