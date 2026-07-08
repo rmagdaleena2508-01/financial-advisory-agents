@@ -2,7 +2,7 @@
 
 Two AI agents that calculate your exact debt repayment strategy and life insurance coverage gap — built with CrewAI, GPT-4o-mini, and 30 passing tests.
 
-Built during an AI engineering internship at Upstride (Nemi Wealth fintech platform).
+Built during my AI engineering internship at Upstride (Nemi Wealth fintech platform).
 
 Each agent follows the same pattern: deterministic Python tools do the math, the LLM reasons and communicates. Numbers are always verifiable. The LLM never estimates.
 
@@ -10,10 +10,10 @@ Each agent follows the same pattern: deterministic Python tools do the math, the
 
 ## Agents
 
-| Agent | Tools | Tests |
-|---|---|---|
-| Debt Management | 3 | 17 |
-| Insurance Coverage Gap Analyzer | 2 | 13 |
+| Agent | Tools | Tests | Storage |
+|---|---|---|---|
+| Debt Management | 3 | 17 | — |
+| Insurance Coverage Gap Analyzer | 2 | 13 | MongoDB |
 
 **30 tests. All passing.**
 
@@ -38,7 +38,7 @@ Encodes CIBIL's four scoring factors — payment history (35%), utilization (30%
 
 ## Agent 2 — Insurance Coverage Gap Analyzer
 
-Calculates how much life insurance a user actually needs and shows the exact gap in rupees. Conversations are persisted to MongoDB with session tracking across multi-turn interactions.
+Calculates how much life insurance a user actually needs and shows the gap in rupees.
 
 Uses the DIME method — the standard framework used by IRDAI-registered financial advisors:
 
@@ -62,6 +62,16 @@ over_insured              existing exceeds need
 
 When a gap exists, the agent outputs `HANDOFF:wealth_retirement` — a signal for the orchestration layer to pass the gap amount into retirement planning.
 
+**Conversation storage**  
+Every user message and agent response is persisted to MongoDB (`nemi_wealth.agent_conversations`). Each conversation is tracked by `session_id` and `user_id`, supporting multi-turn interactions across sessions.
+
+```python
+# Storage functions
+save_conversation(user_id, user_message, agent_response, session_id)
+load_conversation_history(session_id)
+get_user_sessions(user_id)
+```
+
 **Guardrails:** no insurer recommendations, no premium promises, IRDAI disclaimer on every response.
 
 ---
@@ -71,8 +81,8 @@ When a gap exists, the agent outputs `HANDOFF:wealth_retirement` — a signal fo
 - **CrewAI** — agent framework and tool orchestration
 - **GPT-4o-mini** — reasoning and response generation
 - **Pydantic v2** — input/output validation for every tool
-- **MongoDB (PyMongo)** — conversation storage and session tracking
 - **pytest** — unit tests on pure logic before LLM connection
+- **MongoDB (PyMongo)** — conversation storage and session tracking
 - **Python 3.13**
 
 ---
@@ -101,50 +111,10 @@ backend/
 │       │   ├── tool1_wrapper.py
 │       │   └── tool2_wrapper.py
 │       ├── tests/                   ← 13 unit tests
-│       ├── storage.py               ← MongoDB conversation persistence
+│       ├── storage.py               ← MongoDB conversation storage
 │       └── agent.py
 └── requirements.txt
 ```
-
----
-
-## Challenges & what I learned
-
-### LLM tool chaining doesn't guarantee value passing
-
-The insurance agent originally had two separate CrewAI tools — one to calculate required coverage, another to analyze the gap. The plan was for the LLM to take the `total_required_coverage` from Tool 1 and pass it as `required_coverage` into Tool 2.
-
-In practice, the LLM passed `0` instead of the actual value. Every time. The gap came back negative and Sneha (a critically underinsured user) was classified as over-insured.
-
-The fix: merge both tools into a single Python wrapper. The DIME calculation and gap analysis both run inside one function call, so there's no value to pass between tools — the math chains internally in Python, not through the LLM.
-
-The lesson: never trust the LLM to carry a number between tool calls when the second tool's correctness depends on it. If two operations are logically sequential, make them one tool.
-
-### CrewAI's `list[dict]` tool signature causes silent schema failures
-
-The debt payoff optimizer originally accepted `debts: list[dict]` as its parameter. CrewAI passes this to the LLM as part of the tool schema, and the LLM consistently passed `[{}]` — an empty dict — instead of filling in the fields.
-
-The error message was a Pydantic validation failure, which the LLM retried five more times with the same broken input before hitting `max_iter`.
-
-The fix: change the parameter to `debts_json: str` and accept a JSON string instead. The docstring includes a full example of what the JSON should look like. The LLM constructs the string correctly when given a concrete example.
-
-The lesson: for complex nested inputs, a JSON string with an example in the docstring is more reliable than a typed list. The LLM reads the docstring example, not the type annotation.
-
-### Git history issues when local repo wasn't cloned from remote
-
-The first PR raised on the team repo showed "nothing to compare" on GitHub because the local repo was initialized with `git init` instead of cloned. The branches had entirely different commit histories with no common ancestor.
-
-Fixed by rebasing the feature branch onto `origin/main` after fetching, resolving a `requirements.txt` conflict in the process, then force pushing.
-
-The lesson: always clone the existing repo instead of initializing locally. If you must `git init`, fetch the remote and rebase before raising a PR.
-
-### API key exposed in `.env.example`
-
-During the public repo setup, the real OpenAI API key was accidentally written into `.env.example` instead of the placeholder. GitHub's push protection blocked the push and flagged it immediately.
-
-Fixed by amending the commit (`git commit --amend`) before force pushing, which rewrites history so the key never appears in any commit on the remote. The key was also rotated immediately.
-
-The lesson: `.env.example` is a public file. It should contain only placeholder text. Treat any accidental secret exposure as a real security incident — rotate the key even if the push was blocked.
 
 ---
 
@@ -161,9 +131,14 @@ venv\Scripts\Activate.ps1       # Windows
 pip install -r backend/requirements.txt
 
 cp .env.example .env
-# Add the following to .env:
-# OPENAI_API_KEY=your_openai_api_key_here
-# MONGODB_URI=your_mongodb_connection_string_here
+# Add your OpenAI API key and MongoDB URI to .env
+```
+
+Your `.env` needs two values:
+
+```
+OPENAI_API_KEY=your_openai_api_key_here
+MONGODB_URI=mongodb+srv://username:password@cluster0.xxxxx.mongodb.net/?appName=Cluster0
 ```
 
 ---
@@ -205,6 +180,62 @@ The build sequence is the same for every tool:
 6. End-to-end test — talk to the full agent
 
 Tools are tested independently of the LLM. If the math is wrong, tests catch it before the agent ever runs.
+
+---
+
+## Challenges & what I learned
+
+
+### LLM tool chaining doesn't guarantee value passing
+
+The insurance agent originally had two separate CrewAI tools — one to calculate
+required coverage, another to analyze the gap. The plan was for the LLM to take
+the `total_required_coverage` from Tool 1 and pass it as `required_coverage` into
+Tool 2.
+
+In practice, the LLM passed `0` instead of the actual value. Every time. The gap
+came back negative and Sneha (a critically underinsured user) was classified as
+over-insured.
+
+The fix: merge both tools into a single Python wrapper. The DIME calculation and
+gap analysis both run inside one function call, so there's no value to pass between
+tools — the math chains internally in Python, not through the LLM.
+
+The lesson: never trust the LLM to carry a number between tool calls when the
+second tool's correctness depends on it. If two operations are logically sequential,
+make them one tool.
+
+
+### CrewAI's `list[dict]` tool signature causes silent schema failures
+
+The debt payoff optimizer originally accepted `debts: list[dict]` as its parameter.
+CrewAI passes this to the LLM as part of the tool schema, and the LLM consistently
+passed `[{}]` — an empty dict — instead of filling in the fields.
+
+The error message was a Pydantic validation failure, which the LLM retried five
+more times with the same broken input before hitting `max_iter`.
+
+The fix: change the parameter to `debts_json: str` and accept a JSON string instead.
+The docstring includes a full example of what the JSON should look like. The LLM
+constructs the string correctly when given a concrete example.
+
+The lesson: for complex nested inputs, a JSON string with an example in the docstring
+is more reliable than a typed list. The LLM reads the docstring example, not the
+type annotation.
+
+
+### Git history issues when local repo wasn't cloned from remote
+
+The first PR raised on the team repo showed "nothing to compare" on GitHub because
+the local repo was initialized with `git init` instead of cloned. The branches had
+entirely different commit histories with no common ancestor.
+
+Fixed by rebasing the feature branch onto `origin/main` after fetching, resolving
+a `requirements.txt` conflict in the process, then force pushing.
+
+The lesson: always clone the existing repo instead of initializing locally. If you
+must `git init`, fetch the remote and rebase before raising a PR.
+
 
 ---
 
